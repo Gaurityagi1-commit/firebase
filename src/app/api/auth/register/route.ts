@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
 import bcrypt from 'bcrypt';
-import type { User } from '@/types';
 import { z } from 'zod';
+import { connectToDatabase, mapMongoId } from '@/lib/mongodb';
+import type { User, MongoDoc } from '@/types';
 
-const USERS_KEY = 'users'; // Key for storing users in KV
 const saltRounds = 10; // Cost factor for hashing
 
 const registerSchema = z.object({
@@ -15,33 +14,28 @@ const registerSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const { db, collections } = await connectToDatabase();
     const body = await request.json();
     const parseResult = registerSchema.safeParse(body);
 
     if (!parseResult.success) {
-      return NextResponse.json({ message: 'Invalid registration data', errors: parseResult.error.errors }, { status: 400 });
+      return NextResponse.json({ message: 'Invalid registration data', errors: parseResult.error.flatten().fieldErrors }, { status: 400 });
     }
 
     const { username, email, password } = parseResult.data;
 
-    // Fetch existing users
-    const existingUsers: User[] = (await kv.get(USERS_KEY)) || [];
-
     // Check if username or email already exists
-    const usernameExists = existingUsers.some(user => user.username === username);
-    if (usernameExists) {
-      return NextResponse.json({ message: 'Username already taken' }, { status: 409 }); // 409 Conflict
-    }
-    const emailExists = existingUsers.some(user => user.email === email);
-    if (emailExists) {
-      return NextResponse.json({ message: 'Email already registered' }, { status: 409 });
+    const existingUser = await collections.users.findOne({ $or: [{ username }, { email }] });
+
+    if (existingUser) {
+      const message = existingUser.username === username ? 'Username already taken' : 'Email already registered';
+      return NextResponse.json({ message }, { status: 409 }); // 409 Conflict
     }
 
     // Hash the password
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    const newUser: User = {
-      id: `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    const newUserDocument: Omit<User, 'id'> = {
       username,
       email,
       passwordHash,
@@ -49,17 +43,36 @@ export async function POST(request: NextRequest) {
       createdAt: new Date(),
     };
 
-    // Add the new user and save back
-    const updatedUsers = [...existingUsers, newUser];
-    await kv.set(USERS_KEY, updatedUsers);
+    // Insert the new user
+    const insertResult = await collections.users.insertOne(newUserDocument);
 
-     // Don't return the password hash
-    const { passwordHash: _, ...userResponse } = newUser;
+    if (!insertResult.insertedId) {
+      throw new Error('Failed to insert user into database.');
+    }
 
-    return NextResponse.json({ message: 'User registered successfully', user: userResponse }, { status: 201 });
+    // Fetch the newly created user to return it (without the hash)
+    const createdUserDoc = await collections.users.findOne({ _id: insertResult.insertedId });
 
-  } catch (error) {
+    if (!createdUserDoc) {
+        // Should not happen if insert succeeded, but good practice to check
+        throw new Error('Failed to retrieve created user.');
+    }
+
+    const userResponse = mapMongoId(createdUserDoc);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { passwordHash: _, ...safeUserResponse } = userResponse;
+
+
+    return NextResponse.json({ message: 'User registered successfully', user: safeUserResponse }, { status: 201 });
+
+  } catch (error: any) {
     console.error('Registration failed:', error);
-    return NextResponse.json({ message: 'Failed to register user' }, { status: 500 });
+    // Handle potential duplicate key errors from MongoDB index more gracefully
+    if (error.code === 11000) { // MongoDB duplicate key error code
+         const field = Object.keys(error.keyPattern)[0]; // e.g., 'username' or 'email'
+         const message = `${field.charAt(0).toUpperCase() + field.slice(1)} already exists.`;
+        return NextResponse.json({ message }, { status: 409 });
+    }
+    return NextResponse.json({ message: 'An internal error occurred during registration.' }, { status: 500 });
   }
 }

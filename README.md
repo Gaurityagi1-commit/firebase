@@ -1,6 +1,6 @@
 # SalesFlow CRM (Next.js)
 
-This is a Next.js CRM application bootstrapped for Firebase Studio, designed for managing clients, quotations, and reminders. It includes user authentication.
+This is a Next.js CRM application bootstrapped for Firebase Studio, designed for managing clients, quotations, and reminders. It includes user authentication and uses MongoDB as the database.
 
 ## Features
 
@@ -17,7 +17,7 @@ This is a Next.js CRM application bootstrapped for Firebase Studio, designed for
 -   **UI**: React, TypeScript
 -   **Styling**: Tailwind CSS, shadcn/ui
 -   **State Management**: React Query (`@tanstack/react-query`) for server state
--   **Database**: Vercel KV (Serverless Redis)
+-   **Database**: MongoDB (using `mongodb` driver)
 -   **Authentication**: JWT, bcrypt, Next.js Middleware
 -   **Deployment**: Vercel
 
@@ -27,6 +27,7 @@ This is a Next.js CRM application bootstrapped for Firebase Studio, designed for
 
 -   Node.js (v18 or later recommended)
 -   npm, yarn, or pnpm
+-   MongoDB instance (local or cloud-hosted like MongoDB Atlas)
 
 ### Installation
 
@@ -45,14 +46,12 @@ This is a Next.js CRM application bootstrapped for Firebase Studio, designed for
     ```
 3.  Set up Environment Variables:
     *   Copy the example environment file: `cp .env.example .env` (or `.env.local`)
-    *   You'll need to set up Vercel KV for database storage. Follow the steps below.
-    *   Fill in the required Vercel KV variables in `.env`:
+    *   Fill in the required variables in `.env`:
         ```dotenv
-        # Vercel KV (Required for Database)
-        KV_URL=
-        KV_REST_API_URL=
-        KV_REST_API_TOKEN=
-        KV_REST_API_READ_ONLY_TOKEN=
+        # MongoDB Connection URI (Required)
+        # Example for local: mongodb://localhost:27017/salesflow-crm
+        # Example for Atlas: mongodb+srv://<user>:<password>@<cluster-url>/<database-name>?retryWrites=true&w=majority
+        MONGODB_URI=your-mongodb-connection-string
 
         # Authentication (Required)
         # Generate a strong, secret key (e.g., using openssl rand -base64 32)
@@ -61,20 +60,8 @@ This is a Next.js CRM application bootstrapped for Firebase Studio, designed for
         # Google AI (Optional - for Genkit features if used)
         # GOOGLE_GENAI_API_KEY=
         ```
+    *   **Important**: Replace `your-mongodb-connection-string` with your actual MongoDB connection URI.
     *   **Important**: Replace `your-strong-and-secret-jwt-key-change-me` with a secure, randomly generated secret key for JWT signing.
-
-### Setting up Vercel KV
-
-1.  **Create a Vercel Account**: If you don't have one, sign up at [vercel.com](https://vercel.com/).
-2.  **Create a KV Database**:
-    *   Go to your Vercel Dashboard.
-    *   Navigate to the "Storage" tab.
-    *   Click "Create Database" and choose "KV (Serverless Redis)".
-    *   Select a region and give your database a name (e.g., `salesflow-crm-kv`).
-    *   Click "Create".
-3.  **Connect to Your Project**:
-    *   After creation, Vercel will provide options to connect the database to your project. You can connect it directly if you've already linked your Git repository to Vercel, or copy the environment variables manually.
-    *   Copy the `.env` variables provided by Vercel and paste them into your local `.env` (or `.env.local`) file.
 
 ### Running the Development Server
 
@@ -95,7 +82,7 @@ The backend logic is implemented using Next.js API Routes, which run Node.js on 
 -   **Authentication**: `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`
 -   **CRUD Operations**: `/api/clients/...`, `/api/quotations/...`, `/api/reminders/...`
 
-Interactions with the Vercel KV database occur within these API routes.
+Interactions with the MongoDB database occur within these API routes using the official `mongodb` driver.
 
 ## Deployment on Vercel
 
@@ -109,13 +96,13 @@ This application is optimized for deployment on Vercel.
 3.  **Configure Project**:
     *   Vercel should automatically detect it as a Next.js project.
     *   **Environment Variables**: Go to the project settings -> "Environment Variables".
-        *   Add the same Vercel KV variables (`KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN`) that are in your local `.env` file.
-        *   **Crucially, add the `JWT_SECRET` environment variable.** Use the same secure secret key you generated for local development. **Do not commit your actual secret to Git.**
-        *   Ensure these are set for "Production", "Preview", and "Development" environments as needed. If you connected the KV database directly in the Vercel UI, those variables might already be configured.
+        *   **Crucially, add the `MONGODB_URI` environment variable.** Use your production MongoDB connection string. **Do not commit sensitive connection strings to Git.**
+        *   **Crucially, add the `JWT_SECRET` environment variable.** Use the same secure secret key you generated for local development.
+        *   Ensure these are set for "Production", "Preview", and "Development" environments as needed.
         *   **(Optional) Google AI API Key**: If using Genkit features, add `GOOGLE_GENAI_API_KEY` as well.
 4.  **Deploy**: Click "Deploy". Vercel will build and deploy your application.
 
-You'll get a unique URL for your deployed CRM. Accessing it will first take you to the login page.
+You'll get a unique URL for your deployed CRM. Accessing it will first take you to the login page. Ensure your MongoDB instance is accessible from Vercel's deployment regions (configure IP allowlisting if necessary).
 
 ## Folder Structure
 
@@ -124,7 +111,7 @@ You'll get a unique URL for your deployed CRM. Accessing it will first take you 
 ├── public/              # Static assets
 ├── src/
 │   ├── app/             # Next.js App Router pages and API routes
-│   │   ├── api/         # Backend API routes
+│   │   ├── api/         # Backend API routes (using MongoDB)
 │   │   │   ├── auth/    # Authentication routes
 │   │   │   ├── clients/
 │   │   │   ├── quotations/
@@ -141,7 +128,7 @@ You'll get a unique URL for your deployed CRM. Accessing it will first take you 
 │   │   ├── page.tsx     # Root page (redirects to dashboard if logged in)
 │   │   └── globals.css  # Global styles
 │   ├── components/      # Reusable UI components
-│   │   ├── auth/        # Auth related components (if needed)
+│   │   ├── auth/
 │   │   ├── clients/
 │   │   ├── common/
 │   │   ├── dashboard/
@@ -149,7 +136,7 @@ You'll get a unique URL for your deployed CRM. Accessing it will first take you 
 │   │   ├── reminders/
 │   │   └── ui/          # Shadcn UI components
 │   ├── hooks/           # Custom React hooks
-│   ├── lib/             # Utility functions, constants, lib setup
+│   ├── lib/             # Utility functions, constants, lib setup (incl. MongoDB client)
 │   ├── middleware.ts    # Authentication middleware
 │   ├── services/        # Client-side data fetching/mutation functions
 │   └── types/           # TypeScript type definitions
@@ -164,7 +151,7 @@ You'll get a unique URL for your deployed CRM. Accessing it will first take you 
 ## Key Components & Logic
 
 -   **Authentication**: Uses JWT stored in secure, HTTP-only cookies. `bcrypt` is used for password hashing. Next.js `middleware.ts` protects routes by verifying the JWT.
--   **Data Storage**: Vercel KV stores user data (`users` key) alongside CRM data (`clients`, `quotations`, `reminders`).
--   **API Routes**: Handle requests, interact with KV, manage authentication tokens.
+-   **Data Storage**: MongoDB stores user, client, quotation, and reminder data in separate collections.
+-   **API Routes**: Handle requests, interact with MongoDB, manage authentication tokens.
 -   **React Query**: Manages server state (clients, quotations, etc.) and provides caching, background updates, and mutation handling.
 -   **Shadcn UI**: Provides pre-built, accessible UI components.

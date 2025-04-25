@@ -1,65 +1,74 @@
+import type { ObjectId } from 'mongodb';
+
 /**
  * Represents the priority timeline for clients.
  */
 export type Priority = '1 month' | '2 months' | '3 months' | 'none';
 
 /**
- * Represents a client in the CRM.
+ * Represents a client in the CRM (as returned by the API).
+ * Corresponds to the MongoDB 'clients' collection schema.
  */
 export interface Client {
-  id: string;
+  id: string; // MongoDB _id converted to string
   name: string;
   email: string;
-  phone: string; // Assuming phone is always present based on schema
+  phone: string;
   requirements: string;
   priority: Priority;
-  createdAt: Date; // Use Date object
+  createdAt: Date;
 }
 
 /**
- * Represents a quotation associated with a client.
+ * Represents a quotation (as returned by the API).
+ * Corresponds to the MongoDB 'quotations' collection schema.
  */
 export interface Quotation {
-  id: string;
-  clientId: string;
-  clientName: string; // Denormalized for easier display
+  id: string; // MongoDB _id converted to string
+  clientId: string; // Foreign key to Client (as string ObjectId)
+  clientName: string; // Denormalized for display convenience
   details: string;
   amount: number;
   status: 'draft' | 'sent' | 'accepted' | 'rejected';
-  createdAt: Date; // Use Date object
+  createdAt: Date;
 }
 
 /**
- * Represents the data structure for a reminder.
+ * Represents a reminder (as returned by the API).
+ * Corresponds to the MongoDB 'reminders' collection schema.
  */
 export interface Reminder {
-  id: string;
-  clientId: string;
+  id: string; // MongoDB _id converted to string
+  clientId: string; // Foreign key to Client (as string ObjectId)
   clientName: string; // Denormalized
-  reminderDateTime: Date; // Use Date object
+  reminderDateTime: Date;
   message: string;
   type: 'email' | 'whatsapp' | 'meeting' | 'follow-up';
   completed: boolean;
-  createdAt: Date; // Use Date object
+  createdAt: Date;
 }
 
 /**
- * Represents a user in the system.
+ * Represents a user in the system (as returned by the API, without password hash).
+ * Corresponds to the MongoDB 'users' collection schema (minus passwordHash).
  */
 export interface User {
-    id: string;
-    username: string; // Use username for login
-    email: string;
-    passwordHash: string; // Store hashed password
-    role: 'admin' | 'user'; // Define user roles
-    createdAt: Date;
+  id: string; // MongoDB _id converted to string
+  username: string;
+  email: string;
+  passwordHash: string; // This should ideally not be exposed via API, only used internally
+  role: 'admin' | 'user';
+  createdAt: Date;
 }
 
 /**
  * Payload structure for JWT tokens.
  */
 export interface JwtPayload {
-    userId: string;
-    username: string;
-    role: User['role'];
+  userId: string; // User's MongoDB _id as string
+  username: string;
+  role: User['role'];
 }
+
+// Utility type for MongoDB documents before ID mapping
+export type MongoDoc<T> = Omit<T, 'id'> & { _id: ObjectId };

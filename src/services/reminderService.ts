@@ -2,19 +2,25 @@ import type { Reminder } from '@/types';
 
 const API_BASE_URL = '/api/reminders';
 
-// Type for data needed to create a reminder
+// Type for data needed to create a reminder (matches Zod schema in API)
 export type ReminderInputData = Omit<Reminder, 'id' | 'createdAt' | 'clientName' | 'completed'>;
 
-// Type for data needed to update a reminder (can be partial)
+// Type for data needed to update a reminder (matches Zod schema in API)
 export type ReminderUpdateData = Partial<Omit<Reminder, 'id' | 'createdAt' | 'clientName'>>;
 
+
+/**
+ * Fetches all reminders from the API.
+ * Assumes the API returns dates as ISO strings.
+ */
 export async function getReminders(): Promise<Reminder[]> {
   const response = await fetch(API_BASE_URL);
   if (!response.ok) {
-    throw new Error('Failed to fetch reminders');
+    const errorData = await response.json().catch(() => ({ message: 'Failed to fetch reminders' }));
+    throw new Error(errorData.message || 'Failed to fetch reminders');
   }
   const data = await response.json();
-   // Ensure dates are parsed correctly
+  // Convert date strings to Date objects on the client-side for consistency
   return data.map((reminder: any) => ({
     ...reminder,
     reminderDateTime: new Date(reminder.reminderDateTime),
@@ -22,15 +28,21 @@ export async function getReminders(): Promise<Reminder[]> {
   }));
 }
 
+/**
+ * Fetches a single reminder by ID.
+ * Assumes the API returns dates as ISO strings.
+ */
 export async function getReminderById(id: string): Promise<Reminder | null> {
   const response = await fetch(`${API_BASE_URL}/${id}`);
   if (!response.ok) {
     if (response.status === 404) {
       return null;
     }
-    throw new Error(`Failed to fetch reminder ${id}`);
+    const errorData = await response.json().catch(() => ({ message: `Failed to fetch reminder ${id}` }));
+    throw new Error(errorData.message || `Failed to fetch reminder ${id}`);
   }
   const data = await response.json();
+  // Convert date strings to Date objects
    return {
        ...data,
        reminderDateTime: new Date(data.reminderDateTime),
@@ -38,6 +50,10 @@ export async function getReminderById(id: string): Promise<Reminder | null> {
    };
 }
 
+/**
+ * Creates a new reminder. Sends Date as ISO string.
+ * Assumes the API returns the created reminder with dates as ISO strings.
+ */
 export async function createReminder(reminderData: ReminderInputData): Promise<Reminder> {
   const response = await fetch(API_BASE_URL, {
     method: 'POST',
@@ -47,7 +63,10 @@ export async function createReminder(reminderData: ReminderInputData): Promise<R
     // Ensure date is sent in a format the backend expects (ISO string is usually safe)
     body: JSON.stringify({
         ...reminderData,
-        reminderDateTime: reminderData.reminderDateTime.toISOString(),
+        // Send Date object as ISO string
+        reminderDateTime: reminderData.reminderDateTime instanceof Date
+                          ? reminderData.reminderDateTime.toISOString()
+                          : reminderData.reminderDateTime, // Pass through if already string
     }),
   });
   if (!response.ok) {
@@ -56,6 +75,7 @@ export async function createReminder(reminderData: ReminderInputData): Promise<R
     throw new Error(errorData.message || 'Failed to create reminder');
   }
    const data = await response.json();
+   // Convert returned date strings to Date objects
     return {
        ...data,
        reminderDateTime: new Date(data.reminderDateTime),
@@ -63,18 +83,23 @@ export async function createReminder(reminderData: ReminderInputData): Promise<R
    };
 }
 
+/**
+ * Updates an existing reminder using PUT. Sends Date as ISO string if included.
+ * Assumes the API returns the updated reminder with dates as ISO strings.
+ */
 export async function updateReminder(id: string, reminderData: ReminderUpdateData): Promise<Reminder> {
+  const payload: any = { ...reminderData };
+   // Convert Date object to ISO string before sending, if present
+   if (payload.reminderDateTime && payload.reminderDateTime instanceof Date) {
+       payload.reminderDateTime = payload.reminderDateTime.toISOString();
+   }
+
   const response = await fetch(`${API_BASE_URL}/${id}`, {
-    // Use PUT for full updates as defined in the API route
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
     },
-    // Send date as ISO string if present
-    body: JSON.stringify({
-        ...reminderData,
-        ...(reminderData.reminderDateTime && { reminderDateTime: reminderData.reminderDateTime.toISOString() }),
-    }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ message: `Failed to update reminder ${id}` }));
@@ -82,6 +107,7 @@ export async function updateReminder(id: string, reminderData: ReminderUpdateDat
     throw new Error(errorData.message || `Failed to update reminder ${id}`);
   }
   const data = await response.json();
+  // Convert returned date strings to Date objects
    return {
        ...data,
        reminderDateTime: new Date(data.reminderDateTime),
@@ -89,7 +115,10 @@ export async function updateReminder(id: string, reminderData: ReminderUpdateDat
    };
 }
 
-// Specific function to toggle completion status using PATCH
+/**
+ * Toggles the completion status of a reminder using PATCH.
+ * Assumes the API returns the updated reminder with dates as ISO strings.
+ */
 export async function toggleReminderCompletion(id: string, completed: boolean): Promise<Reminder> {
     const response = await fetch(`${API_BASE_URL}/${id}`, {
       method: 'PATCH',
@@ -104,6 +133,7 @@ export async function toggleReminderCompletion(id: string, completed: boolean): 
       throw new Error(errorData.message || `Failed to toggle reminder ${id}`);
     }
     const data = await response.json();
+     // Convert returned date strings to Date objects
      return {
          ...data,
          reminderDateTime: new Date(data.reminderDateTime),
@@ -112,6 +142,9 @@ export async function toggleReminderCompletion(id: string, completed: boolean): 
 }
 
 
+/**
+ * Deletes a reminder by ID.
+ */
 export async function deleteReminder(id: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/${id}`, {
     method: 'DELETE',

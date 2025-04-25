@@ -1,128 +1,119 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
-import type { Quotation, Client } from '@/types';
 import { z } from 'zod';
+import { ObjectId } from 'mongodb';
+import { connectToDatabase, mapMongoId } from '@/lib/mongodb';
+import type { Quotation, Client } from '@/types';
 
-const quotationSchema = z.object({
-  // Client ID shouldn't change on update typically, but might be needed for validation
-  clientId: z.string().min(1).optional(), // Optional on update? Or enforce? Decide based on requirements.
-  details: z.string().min(10),
-  amount: z.coerce.number().positive(),
-  status: z.enum(['draft', 'sent', 'accepted', 'rejected']),
-});
+// Schema for updating (all fields optional)
+const quotationUpdateSchema = z.object({
+  clientId: z.string().refine((val) => ObjectId.isValid(val), { message: "Invalid client ID format" }).optional(),
+  details: z.string().min(10, 'Details must be at least 10 characters').optional(),
+  amount: z.coerce.number().positive('Amount must be a positive number').optional(),
+  status: z.enum(['draft', 'sent', 'accepted', 'rejected']).optional() satisfies z.ZodType<Quotation['status'] | undefined>,
+}).partial(); // Makes all fields optional
 
-const QUOTATIONS_KEY = 'quotations';
-const CLIENTS_KEY = 'clients';
+
+function isValidObjectId(id: string): boolean {
+    return ObjectId.isValid(id);
+}
 
 // GET /api/quotations/[id] - Fetch a single quotation by ID
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const quotationId = params.id;
-    const quotations: Quotation[] | null = await kv.get(QUOTATIONS_KEY);
-    const quotation = quotations?.find(q => q.id === quotationId);
+  const quotationId = params.id;
 
-    if (!quotation) {
+  if (!isValidObjectId(quotationId)) {
+    return NextResponse.json({ message: 'Invalid quotation ID format' }, { status: 400 });
+  }
+
+  try {
+    const { collections } = await connectToDatabase();
+    const quotationDoc = await collections.quotations.findOne({ _id: new ObjectId(quotationId) });
+
+    if (!quotationDoc) {
       return NextResponse.json({ message: 'Quotation not found' }, { status: 404 });
     }
 
+    const quotation = mapMongoId(quotationDoc);
     return NextResponse.json(quotation);
   } catch (error) {
-    console.error(`Failed to fetch quotation ${params.id}:`, error);
+    console.error(`Failed to fetch quotation ${quotationId}:`, error);
     return NextResponse.json({ message: 'Failed to fetch quotation' }, { status: 500 });
   }
 }
 
 // PUT /api/quotations/[id] - Update a quotation by ID
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+  const quotationId = params.id;
+
+  if (!isValidObjectId(quotationId)) {
+    return NextResponse.json({ message: 'Invalid quotation ID format' }, { status: 400 });
+  }
+
   try {
-    const quotationId = params.id;
+    const { collections } = await connectToDatabase();
     const body = await request.json();
-    // Use partial schema for update, as not all fields might be sent
-    const parseResult = quotationSchema.partial().safeParse(body);
+    const parseResult = quotationUpdateSchema.safeParse(body);
 
     if (!parseResult.success) {
-      return NextResponse.json({ message: 'Invalid quotation data', errors: parseResult.error.errors }, { status: 400 });
+      return NextResponse.json({ message: 'Invalid quotation data', errors: parseResult.error.flatten().fieldErrors }, { status: 400 });
     }
 
-    const updatedData = parseResult.data;
+    const updateData = parseResult.data;
 
-    const quotations: Quotation[] | null = await kv.get(QUOTATIONS_KEY);
-     if (!quotations) {
-        return NextResponse.json({ message: 'Quotation list not found' }, { status: 500 });
+     if (Object.keys(updateData).length === 0) {
+        return NextResponse.json({ message: 'No update data provided' }, { status: 400 });
     }
 
-    let quotationFound = false;
-    let clientName = ''; // To store original client name if clientId doesn't change
+    // If clientId is being updated, fetch the new client's name
+    let clientNameUpdate = {};
+    if (updateData.clientId) {
+       const newClientDoc = await collections.clients.findOne({ _id: new ObjectId(updateData.clientId) });
+        if (!newClientDoc) {
+            return NextResponse.json({ message: 'Updated client ID not found' }, { status: 404 });
+        }
+        clientNameUpdate = { clientName: newClientDoc.name };
+    }
 
-    const updatedQuotations = quotations.map(quotation => {
-      if (quotation.id === quotationId) {
-        quotationFound = true;
-        clientName = quotation.clientName; // Keep original name if client doesn't change
-        // Preserve createdAt, ID, potentially clientName if clientId not in updatedData
-        return {
-            ...quotation,
-            ...updatedData,
-            // If clientId changes, we might need to update clientName - requires fetching clients again
-            // For simplicity here, we assume clientName is updated only if explicitly provided or clientId changes
-            // A more robust solution might re-fetch client name if clientId is in updatedData
-            clientName: updatedData.clientId ? '...' : clientName // Placeholder if client changes
-        };
-      }
-      return quotation;
-    });
+    const finalUpdateData = { ...updateData, ...clientNameUpdate };
 
-    if (!quotationFound) {
+    const updateResult = await collections.quotations.findOneAndUpdate(
+      { _id: new ObjectId(quotationId) },
+      { $set: finalUpdateData },
+      { returnDocument: 'after' }
+    );
+
+    if (!updateResult) {
       return NextResponse.json({ message: 'Quotation not found' }, { status: 404 });
     }
 
-    // If clientId changed, fetch new client name (Example - more complex logic)
-    // This part adds complexity and might be better handled depending on requirements
-    if (updatedData.clientId) {
-       const clients: Client[] | null = await kv.get(CLIENTS_KEY);
-       const newClient = clients?.find(c => c.id === updatedData.clientId);
-        if (!newClient) {
-            return NextResponse.json({ message: 'Updated client ID not found' }, { status: 400 });
-        }
-        updatedQuotations.forEach(q => {
-            if(q.id === quotationId) {
-                q.clientName = newClient.name;
-            }
-        })
-    }
+     const updatedQuotation = mapMongoId(updateResult);
+     return NextResponse.json(updatedQuotation);
 
-
-    await kv.set(QUOTATIONS_KEY, updatedQuotations);
-    const updatedQuotation = updatedQuotations.find(q => q.id === quotationId);
-
-
-    return NextResponse.json(updatedQuotation);
   } catch (error) {
-    console.error(`Failed to update quotation ${params.id}:`, error);
+    console.error(`Failed to update quotation ${quotationId}:`, error);
     return NextResponse.json({ message: 'Failed to update quotation' }, { status: 500 });
   }
 }
 
 // DELETE /api/quotations/[id] - Delete a quotation by ID
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  const quotationId = params.id;
+
+  if (!isValidObjectId(quotationId)) {
+    return NextResponse.json({ message: 'Invalid quotation ID format' }, { status: 400 });
+  }
+
   try {
-    const quotationId = params.id;
-    const quotations: Quotation[] | null = await kv.get(QUOTATIONS_KEY);
+    const { collections } = await connectToDatabase();
+    const deleteResult = await collections.quotations.deleteOne({ _id: new ObjectId(quotationId) });
 
-     if (!quotations) {
-      return NextResponse.json({ message: 'Quotation list not found' }, { status: 500 });
+    if (deleteResult.deletedCount === 0) {
+      return NextResponse.json({ message: 'Quotation not found' }, { status: 404 });
     }
-
-    const quotationExists = quotations.some(q => q.id === quotationId);
-    if (!quotationExists) {
-        return NextResponse.json({ message: 'Quotation not found' }, { status: 404 });
-    }
-
-    const updatedQuotations = quotations.filter(quotation => quotation.id !== quotationId);
-    await kv.set(QUOTATIONS_KEY, updatedQuotations);
 
     return NextResponse.json({ message: 'Quotation deleted successfully' }, { status: 200 });
   } catch (error) {
-    console.error(`Failed to delete quotation ${params.id}:`, error);
+    console.error(`Failed to delete quotation ${quotationId}:`, error);
     return NextResponse.json({ message: 'Failed to delete quotation' }, { status: 500 });
   }
 }

@@ -1,86 +1,86 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
-import type { Reminder, Client } from '@/types';
 import { z } from 'zod';
+import { ObjectId } from 'mongodb';
+import { connectToDatabase, mapMongoId } from '@/lib/mongodb';
+import type { Reminder, Client } from '@/types';
 
-// Schema for full update
+// Schema for full update (PUT) - make fields optional
 const reminderUpdateSchema = z.object({
-  clientId: z.string().min(1).optional(), // Allow changing client?
-  message: z.string().min(5).optional(),
-  reminderDateTime: z.coerce.date().optional(),
-  type: z.enum(['email', 'whatsapp', 'meeting', 'follow-up']).optional(),
-  completed: z.boolean().optional(),
-});
+  clientId: z.string().refine((val) => ObjectId.isValid(val), { message: "Invalid client ID format" }).optional(),
+  message: z.string().min(5, 'Message must be at least 5 characters').optional(),
+  reminderDateTime: z.coerce.date().min(new Date(new Date().setHours(0,0,0,0)), "Reminder date cannot be in the past.").optional(),
+  type: z.enum(['email', 'whatsapp', 'meeting', 'follow-up']).optional() satisfies z.ZodType<Reminder['type'] | undefined>,
+  completed: z.boolean().optional(), // Allow updating completion via PUT too
+}).partial();
 
-// Schema specifically for toggling completion status
+
+// Schema specifically for toggling completion status (PATCH)
 const reminderToggleSchema = z.object({
   completed: z.boolean(),
 });
 
-
-const REMINDERS_KEY = 'reminders';
-const CLIENTS_KEY = 'clients';
+function isValidObjectId(id: string): boolean {
+    return ObjectId.isValid(id);
+}
 
 // GET /api/reminders/[id] - Fetch a single reminder by ID
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const reminderId = params.id;
-    const reminders: Reminder[] | null = await kv.get(REMINDERS_KEY);
-    const reminder = reminders?.find(r => r.id === reminderId);
+  const reminderId = params.id;
 
-    if (!reminder) {
+  if (!isValidObjectId(reminderId)) {
+    return NextResponse.json({ message: 'Invalid reminder ID format' }, { status: 400 });
+  }
+
+  try {
+    const { collections } = await connectToDatabase();
+    const reminderDoc = await collections.reminders.findOne({ _id: new ObjectId(reminderId) });
+
+    if (!reminderDoc) {
       return NextResponse.json({ message: 'Reminder not found' }, { status: 404 });
     }
 
+    const reminder = mapMongoId(reminderDoc);
     return NextResponse.json(reminder);
   } catch (error) {
-    console.error(`Failed to fetch reminder ${params.id}:`, error);
+    console.error(`Failed to fetch reminder ${reminderId}:`, error);
     return NextResponse.json({ message: 'Failed to fetch reminder' }, { status: 500 });
   }
 }
 
-// PATCH /api/reminders/[id] - Update a reminder by ID (e.g., toggle complete)
-// Using PATCH for partial updates like toggling status
+// PATCH /api/reminders/[id] - Update completion status
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-   try {
-    const reminderId = params.id;
-    const body = await request.json();
-    // Try parsing as a simple toggle first
-    const toggleParseResult = reminderToggleSchema.safeParse(body);
+   const reminderId = params.id;
 
-    if (!toggleParseResult.success) {
-         // If not a simple toggle, maybe it's a full update? Or return error?
-         // For simplicity, let's assume PATCH is only for toggling 'completed' here.
-         // You could expand this to handle other partial updates.
+   if (!isValidObjectId(reminderId)) {
+       return NextResponse.json({ message: 'Invalid reminder ID format' }, { status: 400 });
+   }
+
+   try {
+    const { collections } = await connectToDatabase();
+    const body = await request.json();
+    const parseResult = reminderToggleSchema.safeParse(body);
+
+    if (!parseResult.success) {
         return NextResponse.json({ message: 'Invalid data for PATCH. Only { "completed": boolean } is supported.' }, { status: 400 });
     }
 
-    const { completed } = toggleParseResult.data;
+    const { completed } = parseResult.data;
 
-    const reminders: Reminder[] | null = await kv.get(REMINDERS_KEY);
-    if (!reminders) {
-        return NextResponse.json({ message: 'Reminder list not found' }, { status: 500 });
-    }
+    const updateResult = await collections.reminders.findOneAndUpdate(
+      { _id: new ObjectId(reminderId) },
+      { $set: { completed: completed } },
+      { returnDocument: 'after' }
+    );
 
-    let reminderFound = false;
-    const updatedReminders = reminders.map(reminder => {
-      if (reminder.id === reminderId) {
-        reminderFound = true;
-        return { ...reminder, completed: completed };
-      }
-      return reminder;
-    });
-
-    if (!reminderFound) {
+    if (!updateResult) {
       return NextResponse.json({ message: 'Reminder not found' }, { status: 404 });
     }
 
-    await kv.set(REMINDERS_KEY, updatedReminders);
-    const updatedReminder = updatedReminders.find(r => r.id === reminderId);
-
+    const updatedReminder = mapMongoId(updateResult);
     return NextResponse.json(updatedReminder);
+
   } catch (error) {
-    console.error(`Failed to update reminder ${params.id} status:`, error);
+    console.error(`Failed to update reminder ${reminderId} status:`, error);
     return NextResponse.json({ message: 'Failed to update reminder status' }, { status: 500 });
   }
 }
@@ -88,89 +88,82 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
 // PUT /api/reminders/[id] - Full update of a reminder by ID
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+   const reminderId = params.id;
+
+   if (!isValidObjectId(reminderId)) {
+     return NextResponse.json({ message: 'Invalid reminder ID format' }, { status: 400 });
+   }
+
    try {
-    const reminderId = params.id;
+    const { collections } = await connectToDatabase();
     const body = await request.json();
     const parseResult = reminderUpdateSchema.safeParse(body); // Use the update schema
 
     if (!parseResult.success) {
-      return NextResponse.json({ message: 'Invalid reminder data', errors: parseResult.error.errors }, { status: 400 });
+      return NextResponse.json({ message: 'Invalid reminder data', errors: parseResult.error.flatten().fieldErrors }, { status: 400 });
     }
 
-    const updatedData = parseResult.data;
+    const updateData = parseResult.data;
 
-    const reminders: Reminder[] | null = await kv.get(REMINDERS_KEY);
-    if (!reminders) {
-        return NextResponse.json({ message: 'Reminder list not found' }, { status: 500 });
+     if (Object.keys(updateData).length === 0) {
+        return NextResponse.json({ message: 'No update data provided' }, { status: 400 });
     }
 
-    let reminderFound = false;
-    let originalClientName = ''; // Keep track if client changes
+    // If clientId is being updated, fetch the new client's name
+    let clientNameUpdate = {};
+    if (updateData.clientId) {
+       const newClientDoc = await collections.clients.findOne({ _id: new ObjectId(updateData.clientId) });
+        if (!newClientDoc) {
+            return NextResponse.json({ message: 'Updated client ID not found' }, { status: 404 });
+        }
+        clientNameUpdate = { clientName: newClientDoc.name };
+    }
 
-    const updatedReminders = reminders.map(reminder => {
-      if (reminder.id === reminderId) {
-        reminderFound = true;
-        originalClientName = reminder.clientName;
-        // Preserve createdAt, ID
-        return {
-            ...reminder, // Start with existing reminder
-            ...updatedData, // Apply updates
-            // clientName needs potential update if clientId changed
-            clientName: updatedData.clientId && updatedData.clientId !== reminder.clientId
-                       ? '...' // Placeholder, will update below if needed
-                       : originalClientName,
-        };
-      }
-      return reminder;
-    });
+    // Ensure date is stored as Date object if provided
+    const finalUpdateData: any = { ...updateData, ...clientNameUpdate };
+    if (finalUpdateData.reminderDateTime) {
+        finalUpdateData.reminderDateTime = new Date(finalUpdateData.reminderDateTime);
+    }
 
-    if (!reminderFound) {
+
+    const updateResult = await collections.reminders.findOneAndUpdate(
+      { _id: new ObjectId(reminderId) },
+      { $set: finalUpdateData },
+      { returnDocument: 'after' }
+    );
+
+    if (!updateResult) {
       return NextResponse.json({ message: 'Reminder not found' }, { status: 404 });
     }
 
-    // Update clientName if clientId changed
-    const potentiallyUpdatedReminder = updatedReminders.find(r => r.id === reminderId)!;
-    if (updatedData.clientId && updatedData.clientId !== potentiallyUpdatedReminder.clientId) {
-       const clients: Client[] | null = await kv.get(CLIENTS_KEY);
-       const newClient = clients?.find(c => c.id === updatedData.clientId);
-        if (!newClient) {
-            return NextResponse.json({ message: 'Updated client ID not found' }, { status: 400 });
-        }
-        // Update the clientName in the mapped array
-        potentiallyUpdatedReminder.clientName = newClient.name;
-    }
+    const updatedReminder = mapMongoId(updateResult);
+    return NextResponse.json(updatedReminder);
 
-    await kv.set(REMINDERS_KEY, updatedReminders);
-    const finalUpdatedReminder = updatedReminders.find(r => r.id === reminderId);
-
-    return NextResponse.json(finalUpdatedReminder);
   } catch (error) {
-    console.error(`Failed to update reminder ${params.id}:`, error);
+    console.error(`Failed to update reminder ${reminderId}:`, error);
     return NextResponse.json({ message: 'Failed to update reminder' }, { status: 500 });
   }
 }
 
 // DELETE /api/reminders/[id] - Delete a reminder by ID
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  const reminderId = params.id;
+
+  if (!isValidObjectId(reminderId)) {
+    return NextResponse.json({ message: 'Invalid reminder ID format' }, { status: 400 });
+  }
+
   try {
-    const reminderId = params.id;
-    const reminders: Reminder[] | null = await kv.get(REMINDERS_KEY);
+    const { collections } = await connectToDatabase();
+    const deleteResult = await collections.reminders.deleteOne({ _id: new ObjectId(reminderId) });
 
-     if (!reminders) {
-      return NextResponse.json({ message: 'Reminder list not found' }, { status: 500 });
+    if (deleteResult.deletedCount === 0) {
+      return NextResponse.json({ message: 'Reminder not found' }, { status: 404 });
     }
-
-    const reminderExists = reminders.some(r => r.id === reminderId);
-    if (!reminderExists) {
-        return NextResponse.json({ message: 'Reminder not found' }, { status: 404 });
-    }
-
-    const updatedReminders = reminders.filter(reminder => reminder.id !== reminderId);
-    await kv.set(REMINDERS_KEY, updatedReminders);
 
     return NextResponse.json({ message: 'Reminder deleted successfully' }, { status: 200 });
   } catch (error) {
-    console.error(`Failed to delete reminder ${params.id}:`, error);
+    console.error(`Failed to delete reminder ${reminderId}:`, error);
     return NextResponse.json({ message: 'Failed to delete reminder' }, { status: 500 });
   }
 }
