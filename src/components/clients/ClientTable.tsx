@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Client, Priority } from '@/types';
 import { format } from 'date-fns';
 import {
@@ -16,13 +17,29 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem, // Use Item instead of CheckboxItem for actions
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem, // Keep for filters
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown, Filter, MoreHorizontal } from 'lucide-react';
+import { ChevronDown, Filter, MoreHorizontal, Edit, Trash2, Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { deleteClient, updateClient, type ClientInputData } from '@/services/clientService'; // Import deleteClient
+import EditClientDialog from './EditClientDialog'; // Assuming EditClientDialog exists
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
 
 interface ClientTableProps {
   clients: Client[];
@@ -41,14 +58,19 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
   const [searchTerm, setSearchTerm] = React.useState('');
   const [priorityFilter, setPriorityFilter] = React.useState<Set<Priority>>(new Set(['1 month', '2 months', '3 months', 'none']));
   const [currentPage, setCurrentPage] = React.useState(1);
+  const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
+  const [clientToEdit, setClientToEdit] = React.useState<Client | null>(null);
   const itemsPerPage = 10;
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
 
   const filteredClients = React.useMemo(() => {
     return clients.filter((client) => {
       const matchesSearch =
         client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.phone.includes(searchTerm) ||
+        (client.phone && client.phone.includes(searchTerm)) ||
         client.requirements.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesPriority = priorityFilter.has(client.priority);
@@ -78,7 +100,71 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
     setCurrentPage(1); // Reset page when filters change
   };
 
+  // --- Delete Mutation ---
+  const { mutate: deleteClientMutate, isPending: isDeleting } = useMutation({
+      mutationFn: deleteClient,
+      onSuccess: (_, clientId) => {
+          queryClient.invalidateQueries({ queryKey: ['clients'] });
+          // Optionally remove from cache immediately for faster UI update
+          // queryClient.setQueryData(['clients'], (oldData: Client[] | undefined) =>
+          //     oldData ? oldData.filter(c => c.id !== clientId) : []
+          // );
+          toast({
+              title: "Client Deleted",
+              description: "The client has been successfully deleted.",
+          });
+      },
+      onError: (error: any, clientId) => {
+          console.error(`Failed to delete client ${clientId}:`, error);
+          toast({
+              title: "Error Deleting Client",
+              description: error.message || "Could not delete the client. Please try again.",
+              variant: "destructive",
+          });
+      },
+  });
+
+  // --- Edit Mutation ---
+   const { mutate: updateClientMutate, isPending: isUpdating } = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: ClientInputData }) => updateClient(id, data),
+    onSuccess: (updatedClient) => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+       // Optionally update cache immediately
+      // queryClient.setQueryData(['clients'], (oldData: Client[] | undefined) =>
+      //   oldData ? oldData.map(c => c.id === updatedClient.id ? updatedClient : c) : []
+      // );
+      setIsEditDialogOpen(false); // Close edit dialog
+      setClientToEdit(null);
+      toast({
+        title: "Client Updated",
+        description: `Client "${updatedClient.name}" updated successfully.`,
+      });
+    },
+    onError: (error: any, variables) => {
+      console.error(`Failed to update client ${variables.id}:`, error);
+      toast({
+        title: "Error Updating Client",
+        description: error.message || "Could not update the client. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+
+  const handleEditClick = (client: Client) => {
+      setClientToEdit(client);
+      setIsEditDialogOpen(true);
+  }
+
+  const handleUpdateClient = (updatedData: ClientInputData) => {
+      if (clientToEdit) {
+         updateClientMutate({ id: clientToEdit.id, data: updatedData });
+      }
+  }
+
+
   const priorityOptions: Priority[] = ['1 month', '2 months', '3 months', 'none'];
+  const currentDeletingId = React.useRef<string | null>(null); // To track which delete button is spinning
 
   return (
     <div className="w-full space-y-4">
@@ -137,7 +223,7 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
                 <TableRow key={client.id}>
                   <TableCell className="font-medium">{client.name}</TableCell>
                   <TableCell>{client.email}</TableCell>
-                  <TableCell>{client.phone}</TableCell>
+                  <TableCell>{client.phone || '-'}</TableCell>
                   <TableCell>
                     <Badge
                       className={`text-white ${priorityColors[client.priority]}`}
@@ -147,22 +233,58 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
                     </Badge>
                   </TableCell>
                    <TableCell className="hidden md:table-cell max-w-xs truncate">{client.requirements}</TableCell>
-                  <TableCell className="hidden sm:table-cell">{format(client.createdAt, 'PP')}</TableCell>
+                   <TableCell className="hidden sm:table-cell">{client.createdAt ? format(new Date(client.createdAt), 'PP') : '-'}</TableCell>
                    <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button aria-haspopup="true" size="icon" variant="ghost">
-                            <MoreHorizontal className="h-4 w-4" />
+                          <Button aria-haspopup="true" size="icon" variant="ghost" disabled={isDeleting && currentDeletingId.current === client.id}>
+                           {isDeleting && currentDeletingId.current === client.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" /> }
                             <span className="sr-only">Toggle menu</span>
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          {/* Add actions like Edit, View Details, Delete */}
-                          <DropdownMenuCheckboxItem>Edit</DropdownMenuCheckboxItem>
-                          <DropdownMenuCheckboxItem>View Details</DropdownMenuCheckboxItem>
+                           <DropdownMenuItem onClick={() => handleEditClick(client)}>
+                               <Edit className="mr-2 h-4 w-4" />
+                               Edit
+                           </DropdownMenuItem>
+                           <DropdownMenuItem>View Details</DropdownMenuItem> {/* Add link/action later */}
                            <DropdownMenuSeparator />
-                          <DropdownMenuCheckboxItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">Delete</DropdownMenuCheckboxItem>
+                             <AlertDialog>
+                               <AlertDialogTrigger asChild>
+                                    <DropdownMenuItem
+                                       className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
+                                       onSelect={(e) => e.preventDefault()} // Prevent closing dropdown immediately
+                                       disabled={isDeleting && currentDeletingId.current === client.id}
+                                     >
+                                       <Trash2 className="mr-2 h-4 w-4" />
+                                        Delete
+                                     </DropdownMenuItem>
+                               </AlertDialogTrigger>
+                               <AlertDialogContent>
+                                 <AlertDialogHeader>
+                                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                   <AlertDialogDescription>
+                                     This action cannot be undone. This will permanently delete the client
+                                     <span className="font-semibold"> {client.name}</span> and potentially their related data.
+                                   </AlertDialogDescription>
+                                 </AlertDialogHeader>
+                                 <AlertDialogFooter>
+                                   <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                   <AlertDialogAction
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      onClick={() => {
+                                          currentDeletingId.current = client.id;
+                                          deleteClientMutate(client.id);
+                                      }}
+                                      disabled={isDeleting}
+                                    >
+                                       {isDeleting && currentDeletingId.current === client.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                      Delete Client
+                                    </AlertDialogAction>
+                                 </AlertDialogFooter>
+                               </AlertDialogContent>
+                             </AlertDialog>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -171,7 +293,7 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
             ) : (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center">
-                  No clients found.
+                  No clients found matching your filters.
                 </TableCell>
               </TableRow>
             )}
@@ -201,6 +323,17 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
               Next
             </Button>
           </div>
+        )}
+
+        {/* Edit Client Dialog */}
+        {clientToEdit && (
+            <EditClientDialog
+                isOpen={isEditDialogOpen}
+                onClose={() => { setIsEditDialogOpen(false); setClientToEdit(null); }}
+                client={clientToEdit}
+                onUpdateClient={handleUpdateClient}
+                isSubmitting={isUpdating}
+            />
         )}
     </div>
   );

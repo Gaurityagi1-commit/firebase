@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Client, Quotation } from '@/types';
+import { Loader2 } from 'lucide-react'; // Import Loader icon
 
 import { Button } from '@/components/ui/button';
 import {
@@ -40,16 +41,25 @@ const quotationSchema = z.object({
   status: z.enum(['draft', 'sent', 'accepted', 'rejected']),
 });
 
-type QuotationFormData = z.infer<typeof quotationSchema>;
+export type QuotationFormData = z.infer<typeof quotationSchema>; // Export type
 
 interface AddQuotationDialogProps {
   clients: Client[];
   isOpen: boolean;
   onClose: () => void;
   onAddQuotation: (data: QuotationFormData) => void;
+  isSubmitting?: boolean; // Optional prop for submission state
+  isLoadingClients?: boolean; // Optional prop for client loading state
 }
 
-export default function AddQuotationDialog({ clients, isOpen, onClose, onAddQuotation }: AddQuotationDialogProps) {
+export default function AddQuotationDialog({
+    clients,
+    isOpen,
+    onClose,
+    onAddQuotation,
+    isSubmitting = false,
+    isLoadingClients = false
+}: AddQuotationDialogProps) {
   const form = useForm<QuotationFormData>({
     resolver: zodResolver(quotationSchema),
     defaultValues: {
@@ -61,8 +71,9 @@ export default function AddQuotationDialog({ clients, isOpen, onClose, onAddQuot
   });
 
   const onSubmit = (data: QuotationFormData) => {
+     if (isSubmitting) return;
     onAddQuotation(data);
-     form.reset(); // Reset form after submission
+     // Reset form will be handled by parent on success or dialog close
   };
 
    // Reset form when dialog closes
@@ -72,8 +83,19 @@ export default function AddQuotationDialog({ clients, isOpen, onClose, onAddQuot
     }
   }, [isOpen, form]);
 
+  // Disable form fields while submitting or loading clients
+  const isDisabled = isSubmitting || isLoadingClients;
+   React.useEffect(() => {
+    if (isDisabled) {
+      form.control._disableForm(true);
+    } else {
+       form.control._disableForm(false);
+    }
+  }, [isDisabled, form.control]);
+
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => !isSubmitting && onClose()}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Add New Quotation</DialogTitle>
@@ -89,13 +111,16 @@ export default function AddQuotationDialog({ clients, isOpen, onClose, onAddQuot
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Client</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isDisabled}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a client" />
+                        <SelectValue placeholder={isLoadingClients ? "Loading clients..." : "Select a client"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
+                      {clients.length === 0 && !isLoadingClients && (
+                          <SelectItem value="no-clients" disabled>No clients available</SelectItem>
+                      )}
                       {clients.map((client) => (
                         <SelectItem key={client.id} value={client.id}>
                           {client.name}
@@ -114,7 +139,7 @@ export default function AddQuotationDialog({ clients, isOpen, onClose, onAddQuot
                 <FormItem>
                   <FormLabel>Amount (USD)</FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="5000" {...field} />
+                    <Input type="number" placeholder="5000" {...field} disabled={isDisabled}/>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -126,7 +151,7 @@ export default function AddQuotationDialog({ clients, isOpen, onClose, onAddQuot
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Status</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isDisabled}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select status" />
@@ -156,6 +181,7 @@ export default function AddQuotationDialog({ clients, isOpen, onClose, onAddQuot
                       className="resize-none"
                       rows={4}
                       {...field}
+                      disabled={isDisabled}
                     />
                   </FormControl>
                   <FormMessage />
@@ -163,9 +189,10 @@ export default function AddQuotationDialog({ clients, isOpen, onClose, onAddQuot
               )}
             />
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                 {form.formState.isSubmitting ? 'Saving...' : 'Save Quotation'}
+              <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+              <Button type="submit" disabled={isDisabled || !form.formState.isDirty}>
+                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                 {isSubmitting ? 'Saving...' : 'Save Quotation'}
               </Button>
             </DialogFooter>
           </form>

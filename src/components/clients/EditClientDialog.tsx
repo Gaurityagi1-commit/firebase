@@ -4,8 +4,8 @@ import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { Priority } from '@/types';
-import { Loader2 } from 'lucide-react'; // Import Loader icon
+import type { Client, Priority } from '@/types';
+import { Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -44,39 +44,46 @@ const clientSchema = z.object({
   priority: z.enum(['none', '1 month', '2 months', '3 months']),
 });
 
-export type ClientFormData = z.infer<typeof clientSchema>; // Export the type
+// Use the exported type from AddClientDialog if available, otherwise redefine
+type ClientFormData = z.infer<typeof clientSchema>;
 
-interface AddClientDialogProps {
+interface EditClientDialogProps {
+  client: Client; // The client data to pre-fill the form
   isOpen: boolean;
   onClose: () => void;
-  onAddClient: (data: ClientFormData) => void;
-  isSubmitting?: boolean; // Optional prop to indicate submission state
+  onUpdateClient: (data: ClientFormData) => void;
+  isSubmitting?: boolean;
 }
 
-export default function AddClientDialog({ isOpen, onClose, onAddClient, isSubmitting = false }: AddClientDialogProps) {
+export default function EditClientDialog({ client, isOpen, onClose, onUpdateClient, isSubmitting = false }: EditClientDialogProps) {
   const form = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
-    defaultValues: {
-      name: '',
-      email: '',
-      phone: '',
-      requirements: '',
-      priority: 'none',
+    defaultValues: { // Populate form with existing client data
+      name: client?.name || '',
+      email: client?.email || '',
+      phone: client?.phone || '',
+      requirements: client?.requirements || '',
+      priority: client?.priority || 'none',
     },
   });
 
- const onSubmit = (data: ClientFormData) => {
-     if (isSubmitting) return; // Prevent multiple submissions
-    onAddClient(data);
-    // Don't reset form here, let the parent component decide upon success
-  };
-
-  // Reset form when dialog closes or submission finishes
+  // Reset form when client data changes (e.g., opening dialog for a different client)
   React.useEffect(() => {
-    if (!isOpen) {
-      form.reset();
-    }
-  }, [isOpen, form]);
+     if (client) {
+         form.reset({
+             name: client.name,
+             email: client.email,
+             phone: client.phone,
+             requirements: client.requirements,
+             priority: client.priority,
+         });
+     }
+  }, [client, form, isOpen]); // Add isOpen to reset on dialog open
+
+ const onSubmit = (data: ClientFormData) => {
+     if (isSubmitting) return;
+    onUpdateClient(data);
+  };
 
   // Disable form fields while submitting
    React.useEffect(() => {
@@ -92,9 +99,9 @@ export default function AddClientDialog({ isOpen, onClose, onAddClient, isSubmit
     <Dialog open={isOpen} onOpenChange={(open) => !isSubmitting && onClose()}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>Add New Client</DialogTitle>
+          <DialogTitle>Edit Client: {client?.name}</DialogTitle>
           <DialogDescription>
-            Enter the details of the new client below. Click save when you&apos;re done.
+            Update the client details below. Click save when you&apos;re done.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -184,7 +191,7 @@ export default function AddClientDialog({ isOpen, onClose, onAddClient, isSubmit
               <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
               <Button type="submit" disabled={isSubmitting || !form.formState.isDirty}>
                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isSubmitting ? 'Saving...' : 'Save Client'}
+                {isSubmitting ? 'Saving...' : 'Save Changes'}
               </Button>
             </DialogFooter>
           </form>

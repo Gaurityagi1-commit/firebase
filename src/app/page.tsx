@@ -1,5 +1,5 @@
-import Dashboard from '@/components/dashboard/Dashboard';
+import DashboardContent from '@/components/dashboard/Dashboard'; // Renamed import
 
 export default function HomePage() {
-  return <Dashboard />;
+  return <DashboardContent />; // Use the renamed component
 }

@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { format } from 'date-fns';
 import type { Client, Reminder } from '@/types';
-import { Calendar as CalendarIcon, Mail, MessageSquare, Users, Briefcase } from 'lucide-react';
+import { Calendar as CalendarIcon, Mail, MessageSquare, Users, Briefcase, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -42,17 +42,20 @@ import { cn } from '@/lib/utils';
 const reminderSchema = z.object({
   clientId: z.string().min(1, { message: 'Please select a client.' }),
   message: z.string().min(5, { message: 'Reminder message must be at least 5 characters.' }),
-  reminderDateTime: z.date({ required_error: "A date and time is required." }),
+  reminderDateTime: z.date({ required_error: "A date and time is required." })
+                        .min(new Date(new Date().setHours(0, 0, 0, 0)), { message: "Reminder date cannot be in the past." }), // Add validation for past dates
   type: z.enum(['email', 'whatsapp', 'meeting', 'follow-up']),
 });
 
-type ReminderFormData = z.infer<typeof reminderSchema>;
+export type ReminderFormData = z.infer<typeof reminderSchema>; // Export type
 
 interface AddReminderDialogProps {
   clients: Client[];
   isOpen: boolean;
   onClose: () => void;
   onAddReminder: (data: ReminderFormData) => void;
+  isSubmitting?: boolean; // Optional prop for submission state
+  isLoadingClients?: boolean; // Optional prop for client loading state
 }
 
 const reminderTypes: { value: Reminder['type']; label: string; icon: React.ElementType }[] = [
@@ -62,7 +65,14 @@ const reminderTypes: { value: Reminder['type']; label: string; icon: React.Eleme
   { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
 ];
 
-export default function AddReminderDialog({ clients, isOpen, onClose, onAddReminder }: AddReminderDialogProps) {
+export default function AddReminderDialog({
+    clients,
+    isOpen,
+    onClose,
+    onAddReminder,
+    isSubmitting = false,
+    isLoadingClients = false
+}: AddReminderDialogProps) {
   const form = useForm<ReminderFormData>({
     resolver: zodResolver(reminderSchema),
     defaultValues: {
@@ -74,12 +84,11 @@ export default function AddReminderDialog({ clients, isOpen, onClose, onAddRemin
   });
 
    const onSubmit = (data: ReminderFormData) => {
-      // Combine selected date with a default time (e.g., 9:00 AM) or implement time picker
-      // For simplicity, let's assume the date picker gives us the date, and we use a fixed time or allow manual input.
-      // const finalDateTime = combineDateAndTime(data.reminderDateTime, timeValue); // If using separate time input
+       if (isSubmitting) return;
+       // TODO: Add time selection if needed, currently only date
        console.log("Submitting reminder data:", data);
        onAddReminder(data);
-       form.reset(); // Reset form after submission
+       // Reset handled by parent or dialog close
     };
 
    // Reset form when dialog closes
@@ -89,13 +98,23 @@ export default function AddReminderDialog({ clients, isOpen, onClose, onAddRemin
     }
   }, [isOpen, form]);
 
+  // Disable form fields while submitting or loading clients
+  const isDisabled = isSubmitting || isLoadingClients;
+   React.useEffect(() => {
+    if (isDisabled) {
+      form.control._disableForm(true);
+    } else {
+       form.control._disableForm(false);
+    }
+  }, [isDisabled, form.control]);
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => !isSubmitting && onClose()}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Add New Reminder</DialogTitle>
           <DialogDescription>
-            Schedule a reminder for a client. It will be sent via Email/WhatsApp.
+            Schedule a reminder for a client. (Notification setup required separately).
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -106,13 +125,16 @@ export default function AddReminderDialog({ clients, isOpen, onClose, onAddRemin
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Client</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isDisabled}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a client" />
+                         <SelectValue placeholder={isLoadingClients ? "Loading clients..." : "Select a client"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
+                       {clients.length === 0 && !isLoadingClients && (
+                           <SelectItem value="no-clients" disabled>No clients available</SelectItem>
+                       )}
                       {clients.map((client) => (
                         <SelectItem key={client.id} value={client.id}>
                           {client.name}
@@ -140,6 +162,7 @@ export default function AddReminderDialog({ clients, isOpen, onClose, onAddRemin
                               'w-full pl-3 text-left font-normal',
                               !field.value && 'text-muted-foreground'
                             )}
+                             disabled={isDisabled}
                           >
                             {field.value ? (
                               format(field.value, 'PPP') // Just the date for now
@@ -155,13 +178,13 @@ export default function AddReminderDialog({ clients, isOpen, onClose, onAddRemin
                           mode="single"
                           selected={field.value}
                           onSelect={field.onChange}
-                          disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} // Disable past dates
+                          disabled={(date) => date < new Date(new Date().setHours(0,0,0,0)) || isDisabled} // Disable past dates & if form disabled
                           initialFocus
                         />
                       </PopoverContent>
                     </Popover>
                     {/* Add Time Input Here if needed */}
-                    {/* <Input type="time" className="mt-2" /> */}
+                    {/* <Input type="time" className="mt-2" disabled={isDisabled} /> */}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -173,7 +196,7 @@ export default function AddReminderDialog({ clients, isOpen, onClose, onAddRemin
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Reminder Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isDisabled}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select type" />
@@ -207,6 +230,7 @@ export default function AddReminderDialog({ clients, isOpen, onClose, onAddRemin
                       placeholder="E.g., Follow up on quotation X, Schedule demo call..."
                       className="resize-none"
                       {...field}
+                       disabled={isDisabled}
                     />
                   </FormControl>
                   <FormMessage />
@@ -214,9 +238,10 @@ export default function AddReminderDialog({ clients, isOpen, onClose, onAddRemin
               )}
             />
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Scheduling...' : 'Schedule Reminder'}
+              <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+              <Button type="submit" disabled={isDisabled || !form.formState.isDirty}>
+                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSubmitting ? 'Scheduling...' : 'Schedule Reminder'}
               </Button>
             </DialogFooter>
           </form>

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import AppLayout from '@/components/common/AppLayout'; // Import AppLayout
+import Providers from '@/components/common/Providers'; // Import Providers
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -26,8 +27,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning> {/* Added suppressHydrationWarning for potential theme issues */}
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {/* Wrap children with AppLayout */}
-        <AppLayout>{children}</AppLayout>
+         <Providers> {/* Wrap with QueryClientProvider */}
+           {/* Wrap children with AppLayout */}
+           <AppLayout>{children}</AppLayout>
+         </Providers>
       </body>
     </html>
   );

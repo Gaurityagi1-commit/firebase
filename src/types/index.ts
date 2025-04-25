@@ -10,10 +10,10 @@ export interface Client {
   id: string;
   name: string;
   email: string;
-  phone: string;
+  phone: string; // Assuming phone is always present based on schema
   requirements: string;
   priority: Priority;
-  createdAt: Date;
+  createdAt: Date; // Use Date object
 }
 
 /**
@@ -26,20 +26,19 @@ export interface Quotation {
   details: string;
   amount: number;
   status: 'draft' | 'sent' | 'accepted' | 'rejected';
-  createdAt: Date;
+  createdAt: Date; // Use Date object
 }
 
 /**
- * Represents the details needed for a reminder.
- * Uses optional phoneNumber as it might not always be required/available.
+ * Represents the data structure for a reminder.
  */
 export interface Reminder {
   id: string;
   clientId: string;
   clientName: string; // Denormalized
-  reminderDateTime: Date;
+  reminderDateTime: Date; // Use Date object
   message: string;
-  type: 'email' | 'whatsapp' | 'meeting' | 'follow-up'; // Added type for clarity
+  type: 'email' | 'whatsapp' | 'meeting' | 'follow-up';
   completed: boolean;
-  createdAt: Date;
+  createdAt: Date; // Use Date object
 }
