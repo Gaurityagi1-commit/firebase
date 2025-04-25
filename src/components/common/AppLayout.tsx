@@ -21,11 +21,10 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInset,
-  SidebarTrigger,
-} from '@/components/ui/sidebar';
+} from '@/components/ui/sidebar'; // Removed SidebarTrigger import as it's not used here
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Toaster } from '@/components/ui/toaster';
+// Removed Toaster import - it's now in RootLayout
 import { cn } from '@/lib/utils';
 
 interface AppLayoutProps {
@@ -93,7 +92,7 @@ const AppLayout: FC<AppLayoutProps> = ({ children }) => {
       </Sidebar>
       <SidebarInset className="flex flex-col">
         {children}
-        <Toaster />
+        {/* Toaster removed from here, now placed in RootLayout */}
       </SidebarInset>
     </SidebarProvider>
   );
