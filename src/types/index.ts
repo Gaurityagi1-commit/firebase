@@ -42,3 +42,24 @@ export interface Reminder {
   completed: boolean;
   createdAt: Date; // Use Date object
 }
+
+/**
+ * Represents a user in the system.
+ */
+export interface User {
+    id: string;
+    username: string; // Use username for login
+    email: string;
+    passwordHash: string; // Store hashed password
+    role: 'admin' | 'user'; // Define user roles
+    createdAt: Date;
+}
+
+/**
+ * Payload structure for JWT tokens.
+ */
+export interface JwtPayload {
+    userId: string;
+    username: string;
+    role: User['role'];
+}

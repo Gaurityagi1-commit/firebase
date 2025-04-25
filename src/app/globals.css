@@ -8,78 +8,83 @@ body {
 
 @layer base {
   :root {
-    --background: 0 0% 98%; /* Light Grey */
-    --foreground: 0 0% 3.9%; /* Dark Grey/Black */
+    /* Light Theme (Black & White) */
+    --background: 0 0% 100%; /* White */
+    --foreground: 0 0% 0%; /* Black */
     --card: 0 0% 100%; /* White */
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 207 70% 53%; /* Blue #3498db */
-    --primary-foreground: 0 0% 100%; /* White text on blue */
-    --secondary: 0 0% 96.1%; /* Slightly darker grey for secondary elements */
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 145 63% 49%; /* Green #2ecc71 */
-    --accent-foreground: 0 0% 100%; /* White text on green */
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
+    --card-foreground: 0 0% 0%; /* Black */
+    --popover: 0 0% 100%; /* White */
+    --popover-foreground: 0 0% 0%; /* Black */
+    --primary: 0 0% 0%; /* Black */
+    --primary-foreground: 0 0% 100%; /* White */
+    --secondary: 0 0% 96%; /* Light Grey */
+    --secondary-foreground: 0 0% 9%; /* Dark Grey */
+    --muted: 0 0% 96%; /* Light Grey */
+    --muted-foreground: 0 0% 45%; /* Medium Grey */
+    --accent: 0 0% 90%; /* Lighter Grey for hover/accent */
+    --accent-foreground: 0 0% 0%; /* Black text on accent */
+    --destructive: 0 100% 50%; /* Red remains for destructive actions */
+    --destructive-foreground: 0 0% 100%; /* White text on destructive */
+    --border: 0 0% 85%; /* Grey border */
     --input: 0 0% 100%; /* White input background */
-    --ring: 207 70% 53%; /* Blue ring for focus */
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --ring: 0 0% 0%; /* Black ring */
+
+    --chart-1: 0 0% 20%;
+    --chart-2: 0 0% 40%;
+    --chart-3: 0 0% 60%;
+    --chart-4: 0 0% 80%;
+    --chart-5: 0 0% 50%;
+
     --radius: 0.5rem;
 
-    /* Sidebar specific theme */
-    --sidebar-background: 240 5.9% 10%; /* Dark background for sidebar */
-    --sidebar-foreground: 0 0% 98%; /* Light text for sidebar */
-    --sidebar-primary: 207 70% 53%; /* Use primary blue for highlights */
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%; /* Slightly lighter dark for hover */
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 207 70% 53%;
+    /* Sidebar specific theme (Dark Sidebar on Light Theme) */
+    --sidebar-background: 0 0% 8%; /* Very Dark Grey / Near Black */
+    --sidebar-foreground: 0 0% 98%; /* White/Light Grey Text */
+    --sidebar-primary: 0 0% 100%; /* White for primary highlight */
+    --sidebar-primary-foreground: 0 0% 0%; /* Black text */
+    --sidebar-accent: 0 0% 15%; /* Slightly lighter dark for hover */
+    --sidebar-accent-foreground: 0 0% 98%; /* White text */
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 0 0% 100%; /* White ring */
   }
 
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 207 70% 53%; /* Blue #3498db */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 145 63% 49%; /* Green #2ecc71 */
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 207 70% 53%; /* Blue ring for focus */
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    /* Dark Theme (Black & White) */
+    --background: 0 0% 0%; /* Black */
+    --foreground: 0 0% 100%; /* White */
+    --card: 0 0% 5%; /* Near Black */
+    --card-foreground: 0 0% 100%; /* White */
+    --popover: 0 0% 5%; /* Near Black */
+    --popover-foreground: 0 0% 100%; /* White */
+    --primary: 0 0% 100%; /* White */
+    --primary-foreground: 0 0% 0%; /* Black */
+    --secondary: 0 0% 15%; /* Dark Grey */
+    --secondary-foreground: 0 0% 98%; /* Light Grey */
+    --muted: 0 0% 15%; /* Dark Grey */
+    --muted-foreground: 0 0% 65%; /* Medium Grey */
+    --accent: 0 0% 25%; /* Lighter Grey for hover/accent */
+    --accent-foreground: 0 0% 100%; /* White text on accent */
+    --destructive: 0 70% 50%; /* Red remains for destructive actions */
+    --destructive-foreground: 0 0% 100%; /* White text on destructive */
+    --border: 0 0% 20%; /* Grey border */
+    --input: 0 0% 10%; /* Dark input background */
+    --ring: 0 0% 100%; /* White ring */
 
-    /* Sidebar specific theme */
-    --sidebar-background: 0 0% 3.9%; /* Keep sidebar dark in dark mode */
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 207 70% 53%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 14.9%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 14.9%;
-    --sidebar-ring: 207 70% 53%;
+    --chart-1: 0 0% 80%;
+    --chart-2: 0 0% 60%;
+    --chart-3: 0 0% 40%;
+    --chart-4: 0 0% 20%;
+    --chart-5: 0 0% 50%;
+
+    /* Sidebar specific theme (Still Dark Sidebar on Dark Theme) */
+    --sidebar-background: 0 0% 8%; /* Very Dark Grey / Near Black */
+    --sidebar-foreground: 0 0% 98%; /* White/Light Grey Text */
+    --sidebar-primary: 0 0% 100%; /* White */
+    --sidebar-primary-foreground: 0 0% 0%; /* Black */
+    --sidebar-accent: 0 0% 15%; /* Slightly lighter dark */
+    --sidebar-accent-foreground: 0 0% 98%; /* White */
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 0 0% 100%; /* White */
   }
 }
 
@@ -104,10 +109,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
+   /* Use primary color for scrollbar */
   background: hsl(var(--primary) / 0.6);
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
+   /* Use primary color for scrollbar hover */
   background: hsl(var(--primary));
 }

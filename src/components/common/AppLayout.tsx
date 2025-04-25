@@ -2,7 +2,7 @@
 
 import type { FC, ReactNode } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Users,
   FileText,
@@ -10,6 +10,7 @@ import {
   Settings,
   LogOut,
   Bell,
+  Loader2
 } from 'lucide-react';
 import {
   SidebarProvider,
@@ -21,11 +22,14 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInset,
-} from '@/components/ui/sidebar'; // Removed SidebarTrigger import as it's not used here
+  SidebarTrigger, // Ensure SidebarTrigger is imported if used elsewhere
+} from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-// Removed Toaster import - it's now in RootLayout
 import { cn } from '@/lib/utils';
+import { logout } from '@/services/authService'; // Import logout service
+import { useToast } from '@/hooks/use-toast';
+import { useState } from 'react'; // Import useState
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -41,17 +45,43 @@ const navItems = [
 
 const AppLayout: FC<AppLayoutProps> = ({ children }) => {
   const pathname = usePathname();
+  const router = useRouter();
+  const { toast } = useToast();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      toast({
+        title: 'Logged Out',
+        description: 'You have been successfully logged out.',
+      });
+      // Redirect to login page after logout
+       router.push('/login');
+       // Force reload to clear any cached user state in the browser
+       router.refresh();
+    } catch (error: any) {
+      console.error('Logout failed:', error);
+      toast({
+        title: 'Logout Failed',
+        description: error.message || 'Could not log out. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <SidebarProvider defaultOpen={true} collapsible="icon">
       <Sidebar side="left" variant="sidebar">
         <SidebarHeader className="p-4 items-center justify-center">
-            {/* Placeholder for Logo - Replace with actual logo component or image if available */}
+            {/* Placeholder for Logo */}
              <Link href="/" className="flex items-center gap-2 font-semibold text-primary">
-                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                  <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.177A7.547 7.547 0 0 1 6.648 6.61a.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" clipRule="evenodd" />
-                </svg>
-                <span className="text-lg group-data-[collapsible=icon]:hidden transition-opacity duration-200">SalesFlow</span>
+                 {/* Using a simple text logo for black/white theme */}
+                <span className="text-xl font-bold group-data-[collapsible=icon]:hidden transition-opacity duration-200">SF</span>
+                 <span className="text-lg group-data-[collapsible=icon]:hidden transition-opacity duration-200">SalesFlow</span>
              </Link>
         </SidebarHeader>
         <SidebarContent className="flex-1 p-2">
@@ -63,6 +93,7 @@ const AppLayout: FC<AppLayoutProps> = ({ children }) => {
                     asChild
                     isActive={pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))}
                     tooltip={item.label}
+                    variant="default" // Ensure button variant is consistent
                   >
                    <a>
                      <item.icon className="h-5 w-5" />
@@ -77,22 +108,50 @@ const AppLayout: FC<AppLayoutProps> = ({ children }) => {
         <SidebarFooter className="p-4 border-t border-sidebar-border">
            <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center transition-all duration-200">
               <Avatar className="h-9 w-9">
-                <AvatarImage src="https://picsum.photos/50/50" alt="Admin User" />
-                <AvatarFallback>AD</AvatarFallback>
+                {/* Placeholder image for user avatar */}
+                <AvatarImage src="https://avatar.vercel.sh/user" alt="User Avatar" />
+                <AvatarFallback>U</AvatarFallback> {/* Fallback initials */}
               </Avatar>
               <div className="flex flex-col group-data-[collapsible=icon]:hidden transition-opacity duration-200">
-                <span className="text-sm font-medium">Admin User</span>
-                <span className="text-xs text-muted-foreground">admin@salesflow.com</span>
+                 {/* Placeholder user info - fetch real user later */}
+                <span className="text-sm font-medium">User</span>
+                <span className="text-xs text-muted-foreground">user@example.com</span>
               </div>
-              <Button variant="ghost" size="icon" className="ml-auto group-data-[collapsible=icon]:hidden transition-opacity duration-200">
-                  <LogOut className="h-5 w-5" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="ml-auto group-data-[collapsible=icon]:hidden transition-opacity duration-200"
+                onClick={handleLogout}
+                disabled={isLoggingOut}
+                aria-label="Logout"
+              >
+                 {isLoggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
               </Button>
+              {/* Tooltip for logout button when collapsed */}
+               <TooltipProvider>
+                  <Tooltip>
+                     <TooltipTrigger asChild>
+                         <Button
+                             variant="ghost"
+                             size="icon"
+                             className="hidden group-data-[collapsible=icon]:flex transition-opacity duration-200"
+                             onClick={handleLogout}
+                             disabled={isLoggingOut}
+                             aria-label="Logout"
+                           >
+                             {isLoggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
+                           </Button>
+                     </TooltipTrigger>
+                     <TooltipContent side="right" align="center">
+                         Logout
+                     </TooltipContent>
+                   </Tooltip>
+               </TooltipProvider>
            </div>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="flex flex-col">
         {children}
-        {/* Toaster removed from here, now placed in RootLayout */}
       </SidebarInset>
     </SidebarProvider>
   );
