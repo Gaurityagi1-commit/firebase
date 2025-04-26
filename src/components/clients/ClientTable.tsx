@@ -39,6 +39,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { useAuth } from '@/hooks/useAuth'; // Import useAuth hook
 
 
 interface ClientTableProps {
@@ -63,7 +64,11 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
   const itemsPerPage = 10;
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user, isAdmin, isLoading: isLoadingAuth } = useAuth(); // Get auth status
 
+  // We need user data associated with clients if admin is viewing
+  // For simplicity now, we assume client data fetched might include owner info if needed,
+  // or we'd need another query/join on the backend. Let's add a placeholder column for admin view.
 
   const filteredClients = React.useMemo(() => {
     return clients.filter((client) => {
@@ -72,12 +77,13 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
         client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (client.phone && client.phone.includes(searchTerm)) ||
         client.requirements.toLowerCase().includes(searchTerm.toLowerCase());
+        // || (isAdmin && client.userId.toLowerCase().includes(searchTerm.toLowerCase())); // Search by userId if admin?
 
       const matchesPriority = priorityFilter.has(client.priority);
 
       return matchesSearch && matchesPriority;
     });
-  }, [clients, searchTerm, priorityFilter]);
+  }, [clients, searchTerm, priorityFilter, isAdmin]);
 
   const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
   const paginatedClients = React.useMemo(() => {
@@ -104,14 +110,18 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
   const { mutate: deleteClientMutate, isPending: isDeleting } = useMutation({
       mutationFn: deleteClient,
       onSuccess: (_, clientId) => {
+          // Invalidate queries that depend on clients list
           queryClient.invalidateQueries({ queryKey: ['clients'] });
-          // Optionally remove from cache immediately for faster UI update
+          queryClient.invalidateQueries({ queryKey: ['dashboardData'] }); // Example if dashboard uses it
+
+          // Optional: Optimistic update (remove immediately)
           // queryClient.setQueryData(['clients'], (oldData: Client[] | undefined) =>
           //     oldData ? oldData.filter(c => c.id !== clientId) : []
           // );
+
           toast({
               title: "Client Deleted",
-              description: "The client has been successfully deleted.",
+              description: "The client and associated data have been deleted.",
           });
       },
       onError: (error: any, clientId) => {
@@ -121,6 +131,8 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
               description: error.message || "Could not delete the client. Please try again.",
               variant: "destructive",
           });
+          // Consider invalidating query here too to refetch correct state if optimistic update failed
+          // queryClient.invalidateQueries({ queryKey: ['clients'] });
       },
   });
 
@@ -129,7 +141,8 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
     mutationFn: ({ id, data }: { id: string; data: ClientInputData }) => updateClient(id, data),
     onSuccess: (updatedClient) => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
-       // Optionally update cache immediately
+      queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+       // Optional: Optimistic update
       // queryClient.setQueryData(['clients'], (oldData: Client[] | undefined) =>
       //   oldData ? oldData.map(c => c.id === updatedClient.id ? updatedClient : c) : []
       // );
@@ -212,6 +225,7 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
               <TableHead>Priority</TableHead>
                <TableHead className="hidden md:table-cell">Requirements</TableHead>
               <TableHead className="hidden sm:table-cell">Created At</TableHead>
+               {isAdmin && <TableHead className="hidden lg:table-cell">Owner ID</TableHead>} {/* Show Owner for Admins */}
               <TableHead>
                 <span className="sr-only">Actions</span>
               </TableHead>
@@ -234,6 +248,7 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
                   </TableCell>
                    <TableCell className="hidden md:table-cell max-w-xs truncate">{client.requirements}</TableCell>
                    <TableCell className="hidden sm:table-cell">{client.createdAt ? format(new Date(client.createdAt), 'PP') : '-'}</TableCell>
+                    {isAdmin && <TableCell className="hidden lg:table-cell text-xs font-mono">{client.userId}</TableCell>} {/* Show Owner ID */}
                    <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -248,7 +263,7 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
                                <Edit className="mr-2 h-4 w-4" />
                                Edit
                            </DropdownMenuItem>
-                           <DropdownMenuItem>View Details</DropdownMenuItem> {/* Add link/action later */}
+                           {/* <DropdownMenuItem>View Details</DropdownMenuItem> */} {/* Add link/action later */}
                            <DropdownMenuSeparator />
                              <AlertDialog>
                                <AlertDialogTrigger asChild>
@@ -266,7 +281,7 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                    <AlertDialogDescription>
                                      This action cannot be undone. This will permanently delete the client
-                                     <span className="font-semibold"> {client.name}</span> and potentially their related data.
+                                     <span className="font-semibold"> {client.name}</span> and their related quotations and reminders.
                                    </AlertDialogDescription>
                                  </AlertDialogHeader>
                                  <AlertDialogFooter>
@@ -277,7 +292,7 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
                                           currentDeletingId.current = client.id;
                                           deleteClientMutate(client.id);
                                       }}
-                                      disabled={isDeleting}
+                                      disabled={isDeleting && currentDeletingId.current === client.id}
                                     >
                                        {isDeleting && currentDeletingId.current === client.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                       Delete Client
@@ -292,7 +307,7 @@ export function ClientTable({ clients, showPagination = true, showFiltering = tr
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
+                 <TableCell colSpan={isAdmin ? 8 : 7} className="h-24 text-center"> {/* Adjust colspan based on admin view */}
                   No clients found matching your filters.
                 </TableCell>
               </TableRow>

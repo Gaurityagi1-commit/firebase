@@ -36,6 +36,7 @@ export default function RemindersPageContent() {
      mutationFn: createReminder,
      onSuccess: (newReminder) => {
        queryClient.invalidateQueries({ queryKey: ['reminders'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
        setIsAddReminderDialogOpen(false);
        toast({
          title: "Reminder Scheduled",
@@ -61,11 +62,12 @@ export default function RemindersPageContent() {
          queryClient.setQueryData(['reminders'], (oldData: Reminder[] | undefined) =>
              oldData ? oldData.filter(r => r.id !== reminderId) : []
          );
-         queryClient.invalidateQueries({ queryKey: ['reminders'] }); // Refetch in background
+          queryClient.invalidateQueries({ queryKey: ['reminders'] }); // Refetch in background
+          queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
          toast({
            title: "Reminder Deleted",
            description: "The reminder has been removed.",
-            variant: "destructive", // Use default or custom variant
+           // Use default variant for delete confirmation
          });
      },
      onError: (error, reminderId) => {
@@ -83,25 +85,44 @@ export default function RemindersPageContent() {
    // --- Toggle Completion Mutation ---
    const { mutate: toggleCompleteMutate, isPending: isTogglingComplete } = useMutation({
        mutationFn: ({ id, completed }: { id: string; completed: boolean }) => toggleReminderCompletion(id, completed),
-       onSuccess: (updatedReminder) => {
-           // Optimistically update UI
-           queryClient.setQueryData(['reminders'], (oldData: Reminder[] | undefined) =>
-                oldData ? oldData.map(r => r.id === updatedReminder.id ? updatedReminder : r) : []
-           );
-           queryClient.invalidateQueries({ queryKey: ['reminders'] }); // Refetch in background
-           toast({
-               title: "Reminder Updated",
-               description: `Reminder marked as ${updatedReminder.completed ? 'complete' : 'incomplete'}.`,
-           });
+       onMutate: async ({ id, completed }) => {
+            // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+            await queryClient.cancelQueries({ queryKey: ['reminders'] });
+
+            // Snapshot the previous value
+            const previousReminders = queryClient.getQueryData<Reminder[]>(['reminders']);
+
+            // Optimistically update to the new value
+            queryClient.setQueryData<Reminder[]>(['reminders'], (old) =>
+                old ? old.map(r => r.id === id ? { ...r, completed: completed } : r) : []
+            );
+
+            // Return a context object with the snapshotted value
+            return { previousReminders };
        },
-       onError: (error, variables) => {
-           console.error(`Failed to toggle reminder ${variables.id}:`, error);
-           queryClient.invalidateQueries({ queryKey: ['reminders'] }); // Revert optimistic update on error
-           toast({
+       onError: (err, variables, context) => {
+           console.error(`Failed to toggle reminder ${variables.id}:`, err);
+           // Rollback to the previous value on error
+           if (context?.previousReminders) {
+               queryClient.setQueryData(['reminders'], context.previousReminders);
+           }
+            toast({
                title: "Error Updating Reminder",
-               description: error.message || "Could not update the reminder status.",
+               description: (err as Error)?.message || "Could not update the reminder status.",
                variant: "destructive",
            });
+       },
+       onSettled: (data, error, variables) => {
+            // Always refetch after error or success:
+            queryClient.invalidateQueries({ queryKey: ['reminders'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+
+             if (!error && data) {
+                 toast({
+                   title: "Reminder Updated",
+                   description: `Reminder marked as ${data.completed ? 'complete' : 'incomplete'}.`,
+                 });
+             }
        },
    });
 
@@ -110,11 +131,9 @@ export default function RemindersPageContent() {
       addReminderMutate(data);
    };
 
-   const handleToggleComplete = (reminderId: string) => {
-       const reminder = reminders?.find(r => r.id === reminderId);
-       if (reminder) {
-          toggleCompleteMutate({ id: reminderId, completed: !reminder.completed });
-       }
+   const handleToggleComplete = (reminderId: string, currentStatus: boolean) => {
+       // We pass the *new* desired status to the mutation
+       toggleCompleteMutate({ id: reminderId, completed: !currentStatus });
    };
 
    const handleDeleteReminder = (reminderId: string) => {

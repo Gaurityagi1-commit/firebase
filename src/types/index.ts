@@ -1,4 +1,8 @@
 import type { ObjectId } from 'mongodb';
+import type { NextRequest } from 'next/server';
+import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies';
+import type jwt from 'jsonwebtoken';
+
 
 /**
  * Represents the priority timeline for clients.
@@ -11,6 +15,7 @@ export type Priority = '1 month' | '2 months' | '3 months' | 'none';
  */
 export interface Client {
   id: string; // MongoDB _id converted to string
+  userId: string; // ID of the user who owns this client
   name: string;
   email: string;
   phone: string;
@@ -25,6 +30,7 @@ export interface Client {
  */
 export interface Quotation {
   id: string; // MongoDB _id converted to string
+  userId: string; // ID of the user who owns this quotation
   clientId: string; // Foreign key to Client (as string ObjectId)
   clientName: string; // Denormalized for display convenience
   details: string;
@@ -39,6 +45,7 @@ export interface Quotation {
  */
 export interface Reminder {
   id: string; // MongoDB _id converted to string
+  userId: string; // ID of the user who owns this reminder
   clientId: string; // Foreign key to Client (as string ObjectId)
   clientName: string; // Denormalized
   reminderDateTime: Date;
@@ -62,13 +69,66 @@ export interface User {
 }
 
 /**
+ * Represents a user profile that can be safely returned by the API.
+ */
+export type UserProfile = Omit<User, 'passwordHash'>;
+
+
+/**
  * Payload structure for JWT tokens.
  */
-export interface JwtPayload {
+export interface JwtPayload extends jwt.JwtPayload { // Extend base JwtPayload
   userId: string; // User's MongoDB _id as string
   username: string;
   role: User['role'];
 }
 
-// Utility type for MongoDB documents before ID mapping
+/**
+ * Utility type for MongoDB documents before ID mapping
+ */
 export type MongoDoc<T> = Omit<T, 'id'> & { _id: ObjectId };
+
+
+/**
+ * Represents the structure containing user info extracted from JWT in middleware/API routes.
+ */
+export interface AuthenticatedUser {
+    userId: string;
+    username: string;
+    role: User['role'];
+}
+
+/**
+ * Helper function type for checking user role and authentication status.
+ */
+export type RoleCheck = (requiredRole?: User['role']) => Promise<{
+    isAuthenticated: boolean;
+    isAuthorized: boolean;
+    user: AuthenticatedUser | null;
+    error?: string;
+    status?: number;
+}>;
+
+/**
+ * Type for the result of connectToDatabase.
+ */
+export interface DatabaseConnection {
+    client: MongoClient;
+    db: Db;
+    collections: ReturnType<typeof getCollections>; // Use return type of getCollections
+}
+
+// Re-declare getCollections type here as it's defined in mongodb.ts
+// This avoids circular dependency if we were to import it directly
+// Ensure this matches the actual return type in mongodb.ts
+type CollectionMap = {
+    users: Collection<Omit<User, 'id'>>;
+    clients: Collection<Omit<Client, 'id'>>;
+    quotations: Collection<Omit<Quotation, 'id'>>;
+    reminders: Collection<Omit<Reminder, 'id'>>;
+}
+export interface DatabaseConnection {
+    client: MongoClient;
+    db: Db;
+    collections: CollectionMap;
+}

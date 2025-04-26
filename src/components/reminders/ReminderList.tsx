@@ -6,7 +6,7 @@ import { format, isPast, differenceInDays } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
-import { Trash2, Edit, Calendar, Mail, MessageSquare, Briefcase, Users, Loader2 } from 'lucide-react'; // Import Users
+import { Trash2, Edit, Calendar, Mail, MessageSquare, Briefcase, Users, Loader2, User } from 'lucide-react'; // Added User icon
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -21,11 +21,12 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { useAuth } from '@/hooks/useAuth'; // Import useAuth hook
 
 
 interface ReminderListProps {
   reminders: Reminder[];
-  onToggleComplete: (reminderId: string) => void;
+  onToggleComplete: (reminderId: string, currentStatus: boolean) => void; // Pass current status
   onDelete: (reminderId: string) => void;
   // onEdit: (reminder: Reminder) => void; // Optional: Add edit functionality later
   isDeleting?: boolean; // Is any delete operation in progress?
@@ -41,6 +42,7 @@ const reminderTypeIcons: Record<Reminder['type'], React.ElementType> = {
 
 export function ReminderList({ reminders, onToggleComplete, onDelete, isDeleting = false, isToggling = false }: ReminderListProps) {
   const [currentActionId, setCurrentActionId] = React.useState<string | null>(null); // Track which specific item is being actioned
+  const { isAdmin } = useAuth(); // Get admin status
 
   const sortedReminders = React.useMemo(() => {
     return [...reminders].sort((a, b) => {
@@ -90,7 +92,7 @@ export function ReminderList({ reminders, onToggleComplete, onDelete, isDeleting
                     checked={reminder.completed}
                     onCheckedChange={() => {
                         setCurrentActionId(reminder.id);
-                        onToggleComplete(reminder.id);
+                        onToggleComplete(reminder.id, reminder.completed); // Pass current status
                     }}
                     className="mt-1 shrink-0"
                     aria-label={`Mark reminder for ${reminder.clientName} as ${reminder.completed ? 'incomplete' : 'complete'}`}
@@ -139,13 +141,16 @@ export function ReminderList({ reminders, onToggleComplete, onDelete, isDeleting
                       </div>
                    </div>
                     <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
+                         {/* Client Info */}
                         <span className="flex items-center gap-1">
                             <Users className="h-3.5 w-3.5" /> {reminder.clientName}
                         </span>
+                         {/* Reminder Type */}
                          <span className="flex items-center gap-1">
                             <Icon className="h-3.5 w-3.5" />
                             <span className="capitalize">{reminder.type}</span>
                          </span>
+                         {/* Date Info */}
                          {isValidDate ? (
                              <span className={cn("flex items-center gap-1", isOverdue && "text-destructive font-medium")}>
                                 <Calendar className="h-3.5 w-3.5" />
@@ -155,6 +160,12 @@ export function ReminderList({ reminders, onToggleComplete, onDelete, isDeleting
                          ) : (
                              <span className="flex items-center gap-1 text-destructive">
                                  <Calendar className="h-3.5 w-3.5" /> Invalid Date
+                             </span>
+                         )}
+                         {/* Owner Info (Admin Only) */}
+                         {isAdmin && (
+                             <span className="flex items-center gap-1 text-xs font-mono" title={`Owner User ID: ${reminder.userId}`}>
+                                <User className="h-3.5 w-3.5" /> {reminder.userId.substring(0, 6)}...
                              </span>
                          )}
                     </div>

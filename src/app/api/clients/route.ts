@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { connectToDatabase, mapMongoId } from '@/lib/mongodb';
-import type { Client, Priority } from '@/types';
+import { verifyAuthAndRole } from '@/lib/authUtils'; // Import the auth utility
+import type { Client, Priority, AuthenticatedUser } from '@/types';
 
 const clientSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -11,11 +12,21 @@ const clientSchema = z.object({
   priority: z.enum(['none', '1 month', '2 months', '3 months']) satisfies z.ZodType<Priority>,
 });
 
-// GET /api/clients - Fetch all clients
+// GET /api/clients - Fetch all clients for the logged-in user (or all for admin)
 export async function GET(request: NextRequest) {
+  const authResult = await verifyAuthAndRole(request); // Check authentication
+  if (!authResult.user || authResult.response) {
+    return authResult.response ?? NextResponse.json({ message: 'Authentication required' }, { status: 401 });
+  }
+  const { userId, role } = authResult.user;
+
   try {
     const { collections } = await connectToDatabase();
-    const clientDocs = await collections.clients.find({}).sort({ createdAt: -1 }).toArray(); // Sort by newest first
+
+    // Admins see all clients, regular users only see their own
+    const query = role === 'admin' ? {} : { userId: userId };
+
+    const clientDocs = await collections.clients.find(query).sort({ createdAt: -1 }).toArray(); // Sort by newest first
     const clients = clientDocs.map(mapMongoId);
     return NextResponse.json(clients);
   } catch (error) {
@@ -24,8 +35,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/clients - Create a new client
+// POST /api/clients - Create a new client for the logged-in user
 export async function POST(request: NextRequest) {
+  const authResult = await verifyAuthAndRole(request); // Check authentication
+  if (!authResult.user || authResult.response) {
+     return authResult.response ?? NextResponse.json({ message: 'Authentication required' }, { status: 401 });
+  }
+  const { userId } = authResult.user; // Get the userId from the verified token
+
   try {
     const { collections } = await connectToDatabase();
     const body = await request.json();
@@ -39,6 +56,7 @@ export async function POST(request: NextRequest) {
 
     const newClientDocument: Omit<Client, 'id'> = {
       ...newClientData,
+      userId: userId, // Associate client with the logged-in user
       createdAt: new Date(),
     };
 
